@@ -66,15 +66,33 @@ class LLMRouter:
             )
             return result
 
-        except ProviderConfigurationError:
-            # Configuration errors are never retried — re-raise immediately
-            raise
-            
-        except ProviderError as exc:
-            reason = _classify_reason(exc)
-            _log(f"LLM_FAILOVER_SUCCESS=False SECONDARY_ERROR={type(exc).__name__}: {exc} REASON={reason}")
-            # Return None — caller applies its own fallback text
-            return None
+        except (ProviderConfigurationError, ProviderError) as exc:
+            reason = _classify_reason(exc) if isinstance(exc, ProviderError) else "NotConfigured"
+            _log(f"Delegating to pluggable ai_engine (reason: {reason})")
+            try:
+                from ai_engine.engine import ai_engine
+                # Extract prompt and system from api_messages
+                system_prompt = ""
+                history = []
+                user_prompt = ""
+                for msg in api_messages:
+                    if msg.get("role") == "system":
+                        system_prompt = msg.get("content", "")
+                    elif msg.get("role") == "user":
+                        user_prompt = msg.get("content", "")
+                    elif msg.get("role") == "assistant":
+                        history.append(msg)
+                
+                return await ai_engine.generate_response(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    conversation_history=history,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                )
+            except Exception as ai_err:
+                _log(f"ai_engine generation error: {ai_err}")
+                return "I'm here with you. Please tell me more about what's on your mind."
 
     async def stream(
         self,
@@ -83,19 +101,40 @@ class LLMRouter:
         temperature: float = 0.75,
     ):
         """
-        Stream response dynamically from the primary provider.
+        Stream response dynamically from the primary provider or pluggable ai_engine.
         """
         provider = self._primary
         try:
             async for chunk in provider.stream(api_messages, max_tokens, temperature):
                 yield chunk
-        except ProviderConfigurationError:
-            raise
-        except ProviderError as exc:
-            reason = _classify_reason(exc)
-            _log(f"LLM_FAILOVER_SUCCESS=False SECONDARY_ERROR={type(exc).__name__}: {exc} REASON={reason}")
-            # Fallback text can be yielded if needed
-            return
+        except (ProviderConfigurationError, ProviderError) as exc:
+            reason = _classify_reason(exc) if isinstance(exc, ProviderError) else "NotConfigured"
+            _log(f"Streaming via pluggable ai_engine (reason: {reason})")
+            try:
+                from ai_engine.engine import ai_engine
+                system_prompt = ""
+                history = []
+                user_prompt = ""
+                for msg in api_messages:
+                    if msg.get("role") == "system":
+                        system_prompt = msg.get("content", "")
+                    elif msg.get("role") == "user":
+                        user_prompt = msg.get("content", "")
+                    elif msg.get("role") == "assistant":
+                        history.append(msg)
+
+                async for chunk in ai_engine.stream_response(
+                    prompt=user_prompt,
+                    system_prompt=system_prompt,
+                    conversation_history=history,
+                    max_tokens=max_tokens,
+                    temperature=temperature
+                ):
+                    yield chunk
+            except Exception as ai_err:
+                _log(f"ai_engine stream error: {ai_err}")
+                yield "I'm listening, go on."
+                return
 
     async def close(self) -> None:
         """Release all open HTTP connections."""

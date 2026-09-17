@@ -1,5 +1,7 @@
 """
 Mythri AI Engine Package.
+
+Exposes pluggable model interfaces, configuration, and orchestrators.
 """
 from .base_model import BaseAIModel
 from .custom_model import CustomAIModel

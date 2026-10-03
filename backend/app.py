@@ -145,7 +145,9 @@ allowed_origins = [
     "http://localhost:3000",
     "http://localhost:3001",
     "http://127.0.0.1:3000",
-    "https://test.affynelabs.com",
+    "https://test.affynelabs.com"
+    "https://*.affynelabs.com"
+    "https://app.affynelabs.in",
 ]
 if cors_origins_env:
     allowed_origins.extend([o.strip() for o in cors_origins_env.split(",") if o.strip()])
@@ -165,7 +167,7 @@ app.add_middleware(
     allow_origin_regex=r"^https://([\w-]+\.)*(onrender\.com|affynelabs\.com)$",
     allow_credentials=True,
     # Explicit method allowlist — no wildcard
-    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_methods=["HEAD","GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     # Explicit header allowlist — no wildcard
     allow_headers=["Authorization", "Content-Type", "Accept", "X-Requested-With", "X-Trace-Id"],
 )
